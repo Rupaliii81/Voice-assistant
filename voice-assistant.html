@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARIA — Voice Assistant</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Syne+Mono&display=swap');
+
+  :root {
+    --void: #080810;
+    --deep: #0d0d1a;
+    --surface: #12121f;
+    --panel: #1a1a2e;
+    --border: rgba(130,100,255,0.15);
+    --purple: #8264ff;
+    --violet: #a78bfa;
+    --cyan: #22d3ee;
+    --white: #f0eeff;
+    --muted: #6b6b8a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--void);
+    color: var(--white);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* Ambient background */
+  body::before {
+    content: '';
+    position: fixed;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(130,100,255,0.08) 0%, transparent 70%);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 520px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  .header { text-align: center; }
+  .aria-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.35em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  h1 { font-size: 2.8rem; font-weight: 800; letter-spacing: -2px; }
+  h1 span { color: var(--purple); }
+
+  /* Orb */
+  .orb-container {
+    position: relative;
+    width: 180px;
+    height: 180px;
+    cursor: pointer;
+  }
+
+  .orb-rings {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+  }
+
+  .orb-rings::before, .orb-rings::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid var(--purple);
+    opacity: 0;
+    animation: none;
+  }
+
+  .orb-container.listening .orb-rings::before {
+    inset: -15px;
+    opacity: 0.3;
+    animation: ripple 2s ease-out infinite;
+  }
+
+  .orb-container.listening .orb-rings::after {
+    inset: -30px;
+    opacity: 0.15;
+    animation: ripple 2s ease-out 0.5s infinite;
+  }
+
+  .orb-container.speaking .orb-rings::before {
+    inset: -10px;
+    opacity: 0.4;
+    animation: pulse-ring 1.2s ease-in-out infinite;
+    border-color: var(--cyan);
+  }
+
+  @keyframes ripple {
+    0% { transform: scale(0.9); opacity: 0.4; }
+    100% { transform: scale(1.2); opacity: 0; }
+  }
+
+  @keyframes pulse-ring {
+    0%, 100% { transform: scale(1); opacity: 0.4; }
+    50% { transform: scale(1.08); opacity: 0.1; }
+  }
+
+  .orb {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #3d2d8a, #1a0a3a, #080810);
+    border: 1px solid rgba(130,100,255,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+    position: relative;
+    transition: all 0.4s ease;
+    box-shadow: 0 0 40px rgba(130,100,255,0.2), inset 0 0 40px rgba(0,0,0,0.5);
+  }
+
+  .orb-container.listening .orb {
+    background: radial-gradient(circle at 35% 35%, #4a2d8a, #220a4a, #0a0820);
+    box-shadow: 0 0 60px rgba(130,100,255,0.4), inset 0 0 40px rgba(0,0,0,0.5);
+    border-color: rgba(130,100,255,0.6);
+  }
+
+  .orb-container.speaking .orb {
+    background: radial-gradient(circle at 35% 35%, #0d5a6b, #071828, #020810);
+    box-shadow: 0 0 60px rgba(34,211,238,0.3), inset 0 0 40px rgba(0,0,0,0.5);
+    border-color: rgba(34,211,238,0.5);
+  }
+
+  /* Waveform */
+  .waveform {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 40px;
+  }
+
+  .waveform .bar {
+    width: 3px;
+    height: 4px;
+    background: var(--muted);
+    border-radius: 2px;
+    transition: all 0.1s;
+  }
+
+  .orb-container.speaking .waveform .bar {
+    background: var(--cyan);
+    animation: wave 0.8s ease-in-out infinite;
+  }
+
+  .waveform .bar:nth-child(1) { animation-delay: 0s; }
+  .waveform .bar:nth-child(2) { animation-delay: 0.1s; }
+  .waveform .bar:nth-child(3) { animation-delay: 0.2s; }
+  .waveform .bar:nth-child(4) { animation-delay: 0.3s; }
+  .waveform .bar:nth-child(5) { animation-delay: 0.4s; }
+  .waveform .bar:nth-child(6) { animation-delay: 0.3s; }
+  .waveform .bar:nth-child(7) { animation-delay: 0.2s; }
+  .waveform .bar:nth-child(8) { animation-delay: 0.1s; }
+  .waveform .bar:nth-child(9) { animation-delay: 0s; }
+
+  @keyframes wave {
+    0%, 100% { height: 4px; }
+    50% { height: 28px; }
+  }
+
+  /* Status */
+  .status {
+    font-size: 0.8rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    height: 20px;
+    transition: color 0.3s;
+  }
+  .status.active { color: var(--purple); }
+  .status.speaking { color: var(--cyan); }
+
+  /* Transcript */
+  .transcript-panel {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px 20px;
+    min-height: 100px;
+    max-height: 160px;
+    overflow-y: auto;
+  }
+
+  .transcript-panel::-webkit-scrollbar { width: 4px; }
+  .transcript-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .msg {
+    margin-bottom: 12px;
+    font-size: 0.88rem;
+    line-height: 1.6;
+  }
+
+  .msg .role {
+    font-family: 'Syne Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    margin-bottom: 3px;
+  }
+
+  .msg.user .role { color: var(--purple); }
+  .msg.aria .role { color: var(--cyan); }
+  .msg.user .text { color: var(--white); }
+  .msg.aria .text { color: rgba(240,238,255,0.8); }
+
+  .placeholder { color: var(--muted); font-size: 0.85rem; font-style: italic; text-align: center; padding: 20px 0; }
+
+  /* Controls */
+  .controls { display: flex; gap: 12px; align-items: center; }
+
+  .btn-mic {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: none;
+    background: linear-gradient(135deg, var(--purple), #5b3fd4);
+    color: white;
+    font-size: 1.4rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 20px rgba(130,100,255,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-mic:hover { transform: scale(1.05); box-shadow: 0 6px 28px rgba(130,100,255,0.5); }
+  .btn-mic.active { background: linear-gradient(135deg, #ff4466, #cc2244); box-shadow: 0 4px 20px rgba(255,68,102,0.4); animation: mic-pulse 1.5s ease-in-out infinite; }
+
+  @keyframes mic-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+
+  .btn-stop {
+    padding: 10px 20px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 30px;
+    font-family: 'Syne', sans-serif;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-stop:hover { border-color: var(--muted); color: var(--white); }
+
+  /* Text input fallback */
+  .text-input-row {
+    width: 100%;
+    display: flex;
+    gap: 10px;
+  }
+
+  .text-input-row input {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 30px;
+    padding: 12px 18px;
+    color: var(--white);
+    font-family: 'Syne', sans-serif;
+    font-size: 0.88rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .text-input-row input:focus { border-color: rgba(130,100,255,0.5); }
+  .text-input-row input::placeholder { color: var(--muted); }
+
+  .btn-send {
+    padding: 12px 20px;
+    background: var(--purple);
+    border: none;
+    border-radius: 30px;
+    color: white;
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-send:hover { background: #9a7cff; }
+
+  /* API setup */
+  .setup-panel {
+    width: 100%;
+    background: rgba(130,100,255,0.06);
+    border: 1px dashed rgba(130,100,255,0.3);
+    border-radius: 12px;
+    padding: 14px 18px;
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  .setup-panel strong { color: var(--violet); }
+  .setup-panel code { background: rgba(130,100,255,0.15); padding: 1px 6px; border-radius: 4px; font-family: 'Syne Mono', monospace; font-size: 0.72rem; }
+
+  .voice-select {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 30px;
+    padding: 10px 16px;
+    color: var(--white);
+    font-family: 'Syne', sans-serif;
+    font-size: 0.82rem;
+    outline: none;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <div class="aria-label">Voice Assistant</div>
+    <h1>AR<span>I</span>A</h1>
+  </div>
+
+  <div class="orb-container" id="orb" onclick="toggleListening()">
+    <div class="orb-rings"></div>
+    <div class="orb">
+      <div class="waveform">
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="status">Click orb to speak</div>
+
+  <div class="transcript-panel" id="transcript">
+    <div class="placeholder" id="placeholder">Your conversation will appear here…</div>
+  </div>
+
+  <div class="controls">
+    <button class="btn-mic" id="micBtn" onclick="toggleListening()">🎙️</button>
+    <select class="voice-select" id="voiceSelect">
+      <option value="21m00Tcm4TlvDq8ikWAM">Rachel (ElevenLabs)</option>
+      <option value="AZnzlk1XvdvUeBnXmlld">Domi (ElevenLabs)</option>
+      <option value="EXAVITQu4vr4xnSDxMaL">Bella (ElevenLabs)</option>
+      <option value="ErXwobaYiN019PkySvjV">Antoni (ElevenLabs)</option>
+      <option value="browser">Browser TTS (Free)</option>
+    </select>
+    <button class="btn-stop" onclick="stopSpeaking()">■ Stop</button>
+  </div>
+
+  <div class="text-input-row">
+    <input type="text" id="textInput" placeholder="Or type your message…" onkeydown="if(event.key==='Enter') sendText()">
+    <button class="btn-send" onclick="sendText()">Send</button>
+  </div>
+
+  <div class="setup-panel">
+    <strong>🔑 Setup:</strong> Add your <strong>ElevenLabs API key</strong> in the JS below (<code>ELEVEN_API_KEY</code>). 
+    Get one free at <strong>elevenlabs.io</strong>. Works without it using Browser TTS — just select "Browser TTS" above.
+    Uses <strong>Web Speech API</strong> for recognition (Chrome/Edge).
+  </div>
+</div>
+
+<script>
+  // 🔑 REPLACE WITH YOUR API KEY
+  const ELEVEN_API_KEY = 'YOUR_ELEVENLABS_API_KEY';
+
+  // Simple AI persona — replace with Claude/OpenAI API for smarter responses
+  const ARIA_PERSONA = `You are ARIA, a helpful and concise voice assistant. Keep responses brief (1-3 sentences). Be warm, clever, and natural.`;
+
+  let recognition = null;
+  let isListening = false;
+  let isSpeaking = false;
+  let currentAudio = null;
+  let conversationHistory = [];
+
+  // Setup speech recognition
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (e) => {
+      const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+      if (e.results[e.results.length - 1].isFinal) {
+        handleUserInput(transcript);
+      }
+    };
+
+    recognition.onend = () => {
+      isListening = false;
+      updateUI('idle');
+    };
+
+    recognition.onerror = (e) => {
+      console.error('Speech error:', e.error);
+      isListening = false;
+      updateUI('idle');
+      setStatus('Mic error — try text input');
+    };
+  }
+
+  function toggleListening() {
+    if (isSpeaking) { stopSpeaking(); return; }
+    if (isListening) {
+      recognition?.stop();
+      isListening = false;
+      updateUI('idle');
+    } else {
+      if (!recognition) { setStatus('Browser not supported — use text input'); return; }
+      recognition.start();
+      isListening = true;
+      updateUI('listening');
+      setStatus('Listening…');
+    }
+  }
+
+  function sendText() {
+    const input = document.getElementById('textInput');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    handleUserInput(text);
+  }
+
+  async function handleUserInput(text) {
+    if (!text) return;
+    addMessage('user', text);
+    setStatus('Thinking…');
+    updateUI('idle');
+
+    const response = await getAIResponse(text);
+    addMessage('aria', response);
+    await speak(response);
+  }
+
+  async function getAIResponse(userText) {
+    conversationHistory.push({ role: 'user', content: userText });
+
+    // Simple rule-based responses (replace with actual AI API)
+    const simpleResponses = {
+      'hello': "Hello! I'm ARIA, your voice assistant. What can I help you with today?",
+      'hi': "Hi there! Ready to assist. What's on your mind?",
+      'how are you': "I'm running perfectly and ready to help! How about you?",
+      'what time is it': `It's ${new Date().toLocaleTimeString()}.`,
+      'what day is it': `Today is ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}.`,
+      'tell me a joke': "Why don't scientists trust atoms? Because they make up everything!",
+      'thank you': "You're welcome! Anything else I can help with?",
+      'bye': "Goodbye! Come back anytime you need assistance.",
+    };
+
+    const lower = userText.toLowerCase().trim();
+    for (const [key, val] of Object.entries(simpleResponses)) {
+      if (lower.includes(key)) {
+        conversationHistory.push({ role: 'assistant', content: val });
+        return val;
+      }
+    }
+
+    // Default response (integrate Claude/OpenAI API here)
+    const fallback = `I heard you say: "${userText}". To make me smarter, connect me to an AI API like Claude or OpenAI in the getAIResponse function!`;
+    conversationHistory.push({ role: 'assistant', content: fallback });
+    return fallback;
+  }
+
+  async function speak(text) {
+    updateUI('speaking');
+    setStatus('Speaking…');
+    isSpeaking = true;
+
+    const voice = document.getElementById('voiceSelect').value;
+
+    if (voice === 'browser' || !ELEVEN_API_KEY || ELEVEN_API_KEY === 'YOUR_ELEVENLABS_API_KEY') {
+      // Browser TTS fallback
+      browserSpeak(text);
+      return;
+    }
+
+    try {
+      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}`, {
+        method: 'POST',
+        headers: {
+          'xi-api-key': ELEVEN_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_monolingual_v1',
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+        })
+      });
+
+      if (!response.ok) throw new Error('ElevenLabs API error');
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      currentAudio = new Audio(audioUrl);
+      currentAudio.onended = () => { isSpeaking = false; updateUI('idle'); setStatus('Click orb to speak'); };
+      currentAudio.play();
+    } catch (err) {
+      console.error('ElevenLabs error:', err);
+      browserSpeak(text); // Fallback
+    }
+  }
+
+  function browserSpeak(text) {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.95;
+    utterance.pitch = 1.1;
+    utterance.onend = () => { isSpeaking = false; updateUI('idle'); setStatus('Click orb to speak'); };
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function stopSpeaking() {
+    currentAudio?.pause();
+    window.speechSynthesis.cancel();
+    isSpeaking = false;
+    updateUI('idle');
+    setStatus('Click orb to speak');
+  }
+
+  function addMessage(role, text) {
+    const transcript = document.getElementById('transcript');
+    const placeholder = document.getElementById('placeholder');
+    if (placeholder) placeholder.remove();
+
+    const msg = document.createElement('div');
+    msg.className = `msg ${role}`;
+    msg.innerHTML = `<div class="role">${role === 'user' ? '▸ YOU' : '◆ ARIA'}</div><div class="text">${text}</div>`;
+    transcript.appendChild(msg);
+    transcript.scrollTop = transcript.scrollHeight;
+  }
+
+  function updateUI(state) {
+    const orb = document.getElementById('orb');
+    const micBtn = document.getElementById('micBtn');
+    orb.className = 'orb-container';
+    micBtn.className = 'btn-mic';
+
+    if (state === 'listening') {
+      orb.classList.add('listening');
+      micBtn.classList.add('active');
+      micBtn.textContent = '⏹';
+    } else if (state === 'speaking') {
+      orb.classList.add('speaking');
+      micBtn.textContent = '■';
+    } else {
+      micBtn.textContent = '🎙️';
+    }
+  }
+
+  function setStatus(text) {
+    const s = document.getElementById('status');
+    s.textContent = text;
+    s.className = 'status' + (text !== 'Click orb to speak' ? ' active' : '');
+    if (text.includes('Speaking')) s.className = 'status speaking';
+  }
+</script>
+</body>
+</html>
